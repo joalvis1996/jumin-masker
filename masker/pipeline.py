@@ -38,12 +38,6 @@ def merge_boxes(box_list: Sequence[tuple[int, int, int, int]]) -> tuple[int, int
     return (x1, y1, x2, y2)
 
 
-def same_line(box_a: TextBox, box_b: TextBox, tolerance: int = LINE_Y_TOLERANCE) -> bool:
-    ay = (box_a.bounding_box[1] + box_a.bounding_box[3]) / 2
-    by = (box_b.bounding_box[1] + box_b.bounding_box[3]) / 2
-    return abs(ay - by) <= tolerance
-
-
 def group_boxes_by_line(
     boxes: Sequence[TextBox],
     tolerance: int = LINE_Y_TOLERANCE,
