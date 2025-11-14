@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 import logging
 from dataclasses import dataclass
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Sequence, Tuple
 
 from PIL import Image
 
@@ -44,6 +44,25 @@ def same_line(box_a: TextBox, box_b: TextBox, tolerance: int = LINE_Y_TOLERANCE)
     return abs(ay - by) <= tolerance
 
 
+def group_boxes_by_line(
+    boxes: Sequence[TextBox],
+    tolerance: int = LINE_Y_TOLERANCE,
+) -> List[List[TextBox]]:
+    groups: List[Tuple[float, List[TextBox]]] = []
+    for box in boxes:
+        center_y = (box.bounding_box[1] + box.bounding_box[3]) / 2
+        for idx, (group_center, group_boxes) in enumerate(groups):
+            if abs(center_y - group_center) <= tolerance:
+                group_boxes.append(box)
+                # update center
+                new_center = (group_center * (len(group_boxes) - 1) + center_y) / len(group_boxes)
+                groups[idx] = (new_center, group_boxes)
+                break
+        else:
+            groups.append((center_y, [box]))
+    return [sorted(group_boxes, key=lambda b: b.bounding_box[0]) for _, group_boxes in groups]
+
+
 def find_resident_id_boxes(boxes: Iterable[TextBox]) -> List[DetectionResult]:
     """
     OCR 박스에서 주민번호 패턴과 매칭되는 영역을 탐지.
@@ -68,32 +87,38 @@ def find_resident_id_boxes(boxes: Iterable[TextBox]) -> List[DetectionResult]:
                 )
             )
 
-    # 연속된 박스(예: 6자리 + 7자리)를 묶어서 주민번호를 구성
-    sorted_boxes = sorted(box_list, key=lambda b: (b.bounding_box[1], b.bounding_box[0]))
-    for i in range(len(sorted_boxes) - 1):
-        first = sorted_boxes[i]
-        second = sorted_boxes[i + 1]
-        if not same_line(first, second):
-            continue
-
-        first_digits = re.sub(r"\D", "", first.text)
-        second_digits = re.sub(r"\D", "", second.text)
-
-        if len(first_digits) == 6 and len(second_digits) == 7:
-            merged_box = merge_boxes((first.bounding_box, second.bounding_box))
-            matched_text = f"{first_digits}-{second_digits}"
-            LOGGER.debug(
-                "연속 박스 매칭: '%s' + '%s' -> %s",
-                first.text,
-                second.text,
-                matched_text,
-            )
-            matches.append(
-                DetectionResult(
-                    matched_text=matched_text,
-                    bounding_boxes=[merged_box],
-                )
-            )
+    # 연속된 박스(예: 6자리 + 7자리, 혹은 더 많은 조각)를 묶어서 주민번호 구성
+    line_groups = group_boxes_by_line(box_list)
+    for group in line_groups:
+        digits_list = [re.sub(r"\D", "", box.text) for box in group]
+        for start in range(len(group)):
+            combined_digits = ""
+            combined_boxes: List[tuple[int, int, int, int]] = []
+            for idx in range(start, len(group)):
+                if not digits_list[idx]:
+                    if combined_digits:
+                        break
+                    continue
+                combined_digits += digits_list[idx]
+                combined_boxes.append(group[idx].bounding_box)
+                if len(combined_digits) >= 13:
+                    normalized = combined_digits[:13]
+                    if not normalized.isdigit():
+                        break
+                    merged_box = merge_boxes(tuple(combined_boxes))
+                    matched_text = f"{normalized[:6]}-{normalized[6:]}"
+                    LOGGER.debug(
+                        "연속 다중 박스 매칭: boxes=%s -> %s",
+                        [box.text for box in group[start : idx + 1]],
+                        matched_text,
+                    )
+                    matches.append(
+                        DetectionResult(
+                            matched_text=matched_text,
+                            bounding_boxes=[merged_box],
+                        )
+                    )
+                    break
 
     return matches
 
@@ -103,17 +128,26 @@ class MaskingPipeline:
     이미지 로드→전처리→OCR→주민번호 탐지→마스킹까지 수행.
     """
 
-    def __init__(self, kernel_size: tuple[int, int] = (51, 51), padding: int = 6) -> None:
+    def __init__(
+        self,
+        kernel_size: tuple[int, int] = (51, 51),
+        padding: int = 6,
+        *,
+        min_width_for_ocr: int = 1000,
+        tesseract_config: str | None = None,
+    ) -> None:
         self.kernel_size = kernel_size
         self.padding = padding
+        self.min_width_for_ocr = min_width_for_ocr
+        self.tesseract_config = tesseract_config or "--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789-"
 
     def process(self, input_path: str) -> Image.Image:
         LOGGER.info("입력 이미지 로드: %s", input_path)
         pil_image = load_image(input_path)
-        processed = preprocess_for_ocr(pil_image)
+        processed = preprocess_for_ocr(pil_image, min_width=self.min_width_for_ocr)
         LOGGER.debug("전처리 완료 - shape=%s", getattr(processed, "shape", None))
 
-        boxes = extract_text_boxes(processed)
+        boxes = extract_text_boxes(processed, config=self.tesseract_config)
         LOGGER.info("OCR 박스 수: %d", len(boxes))
         detections = find_resident_id_boxes(boxes)
         LOGGER.info("주민번호 후보 수: %d", len(detections))
