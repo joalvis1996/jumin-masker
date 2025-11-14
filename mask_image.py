@@ -37,6 +37,7 @@ def main() -> int:
         level=level,
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
+    
     logging.getLogger("pytesseract").setLevel(logging.ERROR)
 
     logging.getLogger(__name__).info("마스킹 시작")
