@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-kor \
     libtesseract-dev \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
@@ -26,5 +26,5 @@ COPY . .
 # 포트 노출
 EXPOSE 8000
 
-# 서버 실행
-CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+# 서버 실행 (PORT 환경 변수 사용)
+CMD python -m uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}
