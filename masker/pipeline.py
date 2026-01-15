@@ -261,8 +261,8 @@ class MaskingPipeline:
     def process(self, input_path: str) -> Image.Image:
         LOGGER.info("입력 이미지 로드: %s", input_path)
         pil_image = load_image(input_path)
-        processed = preprocess_for_ocr(pil_image, min_width=self.min_width_for_ocr)
-        LOGGER.debug("전처리 완료 - shape=%s", getattr(processed, "shape", None))
+        processed, scale = preprocess_for_ocr(pil_image, min_width=self.min_width_for_ocr)
+        LOGGER.debug("전처리 완료 - shape=%s, scale=%.2f", getattr(processed, "shape", None), scale)
 
         boxes = extract_text_boxes(processed, config=self.tesseract_config)
         LOGGER.info("OCR 박스 수: %d", len(boxes))
@@ -273,8 +273,20 @@ class MaskingPipeline:
         LOGGER.info("주민번호 후보 수: %d", len(detections))
 
         all_boxes = [bbox for detection in detections for bbox in detection.bounding_boxes]
+        
+        # 스케일된 좌표를 원본 좌표로 변환
+        if scale > 1.0:
+            all_boxes = [
+                (int(x1 / scale), int(y1 / scale), int(x2 / scale), int(y2 / scale))
+                for (x1, y1, x2, y2) in all_boxes
+            ]
+            LOGGER.debug("좌표를 원본 스케일로 변환 (scale=%.2f)", scale)
+        
         expanded = expand_boxes(all_boxes, padding=self.padding)
         LOGGER.debug("마스킹 대상 박스 수: %d", len(expanded))
+        if LOGGER.isEnabledFor(logging.DEBUG) and expanded:
+            for bbox in expanded:
+                LOGGER.debug("마스킹 박스: %s", bbox)
 
         if not expanded:
             LOGGER.warning("마스킹 대상이 없습니다. 원본 이미지를 그대로 반환합니다.")

@@ -34,7 +34,7 @@ def preprocess_for_ocr(
     pil_image: Image.Image,
     *,
     min_width: int = 1000,
-) -> np.ndarray:
+) -> tuple[np.ndarray, float]:
     """
     OCR 성능 향상을 위한 기본 전처리.
 
@@ -43,6 +43,9 @@ def preprocess_for_ocr(
     - Otsu 이진화
     - 저해상도 이미지는 보간을 통해 확대
     - 대비 향상 (CLAHE)
+    
+    Returns:
+        (processed_image, scale_factor): 전처리된 이미지와 스케일 팩터
     """
     bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
     height, width = bgr.shape[:2]
@@ -61,7 +64,7 @@ def preprocess_for_ocr(
     
     # Otsu 이진화
     _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return thresh
+    return thresh, scale
 
 
 def extract_text_boxes(
