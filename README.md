@@ -53,14 +53,14 @@ git push origin main
 1. [Render](https://render.com)에 가입/로그인
 2. "New +" → "Web Service" 선택
 3. GitHub 저장소 연결
-4. 다음 설정 사용:
+4. `render.yaml` 파일이 있으면 자동으로 Dockerfile을 사용하여 설정이 적용됩니다.
+
+또는 수동으로 설정:
    - **Name**: jumin-masker (또는 원하는 이름)
-   - **Environment**: Python 3
-   - **Build Command**: `chmod +x build.sh && ./build.sh && pip install -r requirements.txt`
-   - **Start Command**: `python -m uvicorn app:app --host 0.0.0.0 --port $PORT`
+   - **Dockerfile Path**: `Dockerfile`
    - **Plan**: Starter (무료 플랜)
 
-또는 `render.yaml` 파일이 있으면 자동으로 설정이 적용됩니다.
+> **참고**: Render의 Python buildpack은 시스템 패키지 설치를 지원하지 않으므로, Tesseract OCR 설치를 위해 Dockerfile을 사용합니다.
 
 ### 3. 배포 완료
 
