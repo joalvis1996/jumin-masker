@@ -42,6 +42,7 @@ def preprocess_for_ocr(
     - 가우시안 블러를 통한 노이즈 제거
     - Otsu 이진화
     - 저해상도 이미지는 보간을 통해 확대
+    - 대비 향상 (CLAHE)
     """
     bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
     height, width = bgr.shape[:2]
@@ -50,7 +51,15 @@ def preprocess_for_ocr(
         bgr = cv2.resize(bgr, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    
+    # CLAHE (Contrast Limited Adaptive Histogram Equalization)로 대비 향상
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
+    
+    # 노이즈 제거를 위한 약한 블러
+    blur = cv2.GaussianBlur(gray, (3, 3), 0)
+    
+    # Otsu 이진화
     _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return thresh
 
